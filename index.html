@@ -60,15 +60,20 @@
                             <div class="step-content">
                                 <h1>Set Up Web Bluetooth</h1>
                                 <p>
-                                    Web Bluetooth is currently only supported in the Chrome browser. Click this link in
-                                    Chrome to enable web Bluetooth. <a href="chrome://flags">chrome://flags</a>
+                                    Web Bluetooth is currently only supported in Chromium-based browsers.
                                 </p>
                                 <p>
-                                    Then enable the following two flags:<br>
-                                    <a
-                                        href="chrome://flags/#enable-experimental-web-platform-features">chrome://flags/#enable-experimental-web-platform-features</a><br>
-                                    <a
-                                        href="chrome://flags/#enable-web-bluetooth-new-permissions-backend">chrome://flags/#enable-web-bluetooth-new-permissions-backend</a>
+                                    To get the best experience, enable the experimental <a
+                                        href="about://flags/#enable-web-bluetooth-new-permissions-backend">about://flags/#enable-web-bluetooth-new-permissions-backend</a> flag.
+                                </p>
+                                <p>
+                                    On Linux only, enable the experimental <a
+                                        href="about://flags/#enable-experimental-web-platform-features">about://flags/#enable-experimental-web-platform-features</a>
+                                    flag. However be careful as it would be risky to browse the web whith this flag turned
+                                    on as it enables many other experimental web platform features. Starting with Chromium
+                                    version 100, enable the <a
+                                        href="about://flags/#enable-web-bluetooth">about://flags/#enable-web-bluetooth</a>
+                                    safer flag instead.
                                 </p>
                             </div>
                         </section>
