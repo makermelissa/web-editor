@@ -49,7 +49,7 @@ class WebWorkflow extends Workflow {
         } else if (this.titleMode) {
             this.setTerminalTitle(e.data, true);
         } else {
-            this.terminal.io.print(e.data);
+            this.writeToTerminal(e.data);
         }
     }
 
@@ -207,8 +207,10 @@ class WebWorkflow extends Workflow {
     }
 
     async parseParams(urlParams) {
-        if ("host" in urlParams) {
+        if ((location.hostname == "localhost") && ("host" in urlParams)) {
             this.host = urlParams.host.toLowerCase();
+        } else if (location.hostname.search(/cpy-[0-9a-f]{6}.local/gi) >= 0) {
+            this.host = location.hostname;
         }
 
         if (this.host != null) {
