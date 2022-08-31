@@ -11,8 +11,8 @@ class FileTransferClient {
     }
 
     async checkConnection() {
-        if (!this.connectionStatus()) {
-            throw new Error("Unable to perform file operation. Not Connected");
+        if (!this.connectionStatus() && this._allowedMethods !== null) {
+            throw new Error("Unable to perform file operation. Not Connected.");
         }
         
         if (this._allowedMethods === null) {
@@ -21,14 +21,14 @@ class FileTransferClient {
         }
     }
 
-    async readFile(path, asBlob=false, rootDir='/fs') {
+    async readFile(path, rawResponse=false, rootDir='/fs') {
         await this.checkConnection();
         const response = await this._fetch(`${rootDir}${path}`);
 
         if (response.ok) {
-            return asBlob ? await response.blob() : await response.text();
+            return rawResponse ? response : await response.text();
         } else {
-            return asBlob ? null : "";
+            return rawResponse ? null : "";
         }
     }
 
@@ -158,7 +158,7 @@ class FileTransferClient {
         let options = {
             method: 'MOVE',
             headers: {
-                "X-Destination": newPath
+                "X-Destination": `/fs${newPath}`
             }
         }
         
@@ -167,8 +167,28 @@ class FileTransferClient {
     }
 
     async versionInfo() {
-        return await this.readFile('/version.json', false, '/cp');
-    }  
+        let response = await this.readFile('/version.json', true, '/cp');
+        if (!response) {
+            return null;
+        }
+        return await response.json();
+    }
+
+    async otherDevices() {
+        let response = await this.readFile('/devices.json', true, '/cp');
+        if (!response) {
+            return null;
+        }
+        return await response.json();
+    }
+
+    static async getRedirectedHost(host) {
+        let versionResponse = await fetch(`http://${host}/cp/version.json`, {mode: "cors"});
+        if (!versionResponse.ok && versionResponse.redirected) {
+            versionResponse = await fetch(versionResponse.url);
+        }
+        return new URL("/", versionResponse.url).host;
+    }
 }
 
 class ProtocolError extends Error {
