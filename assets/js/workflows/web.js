@@ -134,20 +134,11 @@ class WebWorkflow extends Workflow {
         }
     }
 
-    async onConnectButtonClick(e) {
-        try {
-            await this.checkHost();
-            await this.connectToHost(this.host);
-        }
-        catch(error) {
-            console.log('Argh: ' + error);
-            this.debugLog('No device selected. Try to connect to existing.');
-        }
-    }
-
     async connect() {
         await super.connect();
-        await this.checkHost();
+        if (!await this.checkHost()) {
+            return false;
+        }
         return await this.connectToHost(this.host);
     }
 
@@ -155,11 +146,17 @@ class WebWorkflow extends Workflow {
         if (!this.host) {
             this.parseParams();
         }
-
         if (this.host.toLowerCase() == "circuitpython.local") {
-            this.host = await FileTransferClient.getRedirectedHost(this.host);
-            console.log("New Host", this.host);
+            try {
+                this.host = await FileTransferClient.getRedirectedHost(this.host);
+                console.log("New Host", this.host);
+            } catch(e) {
+                console.error("Unable to forward to device. Ensure they are set up and connected to the same local network.");
+                return false;
+            }
         }
+
+        return true;
     }
 
     async onConnected(e) {
@@ -192,16 +189,14 @@ class WebWorkflow extends Workflow {
         let p = this.connectDialog.open();
         let modal = this.connectDialog.getModal();
         let deviceLink = modal.querySelector("#device-link");
-        //let newHost = await FileTransferClient.getRedirectedHost(url.host);
-        //deviceLink.setAttribute("device-host", newHost);
         deviceLink.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopImmediatePropagation();
             let clickedItem = event.target;
             if (clickedItem.tagName.toLowerCase() != "a") {
                 clickedItem = clickedItem.parentNode;
             }
             this.switchDevice(new URL(clickedItem.href).host, document);
-            event.preventDefault();
-            event.stopPropagation();
         });
         return await p;
     }
@@ -212,7 +207,7 @@ class WebWorkflow extends Workflow {
             contents: document,
         };
         let url = `http://${deviceHost}/code/`;
-        let server = WebWorkflow.makeUrl(url, {
+        let server = this.constructor.makeUrl(url, {
             state: encodeURIComponent(JSON.stringify(documentState))
         });
         let oldHost = window.location.host;
@@ -268,10 +263,14 @@ class WebWorkflow extends Workflow {
         for (const item in hashParams) {
             segments.push(`${item}=${hashParams[item]}`);
         }
+        if (segments.length == 0) {
+            return '';
+        }
+
         return '#'+segments.join('&');
     }
 
-    static makeUrl(url, extraParams = []) {
+    static makeUrl(url, extraParams = {}) {
         let urlParams = {
             ...Workflow.getUrlParams(),
             ...extraParams
@@ -282,7 +281,7 @@ class WebWorkflow extends Workflow {
             return new URL(oldUrl.pathname, `http://${location.host}/`) + this.buildHash(urlParams);
         }
 
-        return oldUrl;
+        return new URL(oldUrl) + this.buildHash(urlParams);
     }
     
     static isMdns() {
