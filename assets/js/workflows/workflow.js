@@ -1,6 +1,7 @@
 import {sleep, timeout} from '../common/utilities.js';
 import {FileHelper} from '../common/file.js'
-import {UnsavedDialog, FileDialog, FILE_DIALOG_OPEN, FILE_DIALOG_SAVE} from '../common/dialogs.js';
+import {UnsavedDialog} from '../common/dialogs.js';
+import {FileDialog, FILE_DIALOG_OPEN, FILE_DIALOG_SAVE} from '../common/file_dialog.js';
 
 /*
  * This class will encapsulate all of the common workflow-related functions 
@@ -31,9 +32,9 @@ class Workflow {
         this.connectDialog = null;
         this._connected = false;
         this.currentFilename = null;
-        this._fileHelper = null;
+        this.fileHelper = null;
         this._unsavedDialog = new UnsavedDialog("unsaved");
-        this._fileDialog = new FileDialog("files", this.showBusy);
+        this._fileDialog = new FileDialog("files", this.showBusy.bind(this));
     }
 
     async init(params) {
@@ -53,8 +54,7 @@ class Workflow {
     }
 
     async initFileClient(fileClient) {
-        this.fileClient = fileClient;
-        this._fileHelper = new FileHelper(fileClient, this.showBusy.bind(this));
+        this.fileHelper = new FileHelper(fileClient);
     }
 
     async getDeviceFileContents() {
@@ -62,7 +62,7 @@ class Workflow {
         if (!filename) {
             return "";
         }
-        return await this.showBusy(this.fileClient.readFile(this.currentFilename));
+        return await this.showBusy(this.fileHelper.readFile(this.currentFilename));
     }
 
     async disconnectButtonHandler(e) {
@@ -186,19 +186,20 @@ class Workflow {
             path = await this.saveAs();
         }
         if (path !== null) {
-            this._setFilename(path);
+            this.currentFilename = path;
             // If this is a different file, we write everything
             await this._writeText(path !== previousFile ? 0 : null);
             return true;
         }
+        this.currentFilename = previousFile;
         return false;
     }
     
     async saveAs() {
-        let path = await this._fileDialog.open(this._fileHelper, FILE_DIALOG_SAVE);
+        let path = await this._fileDialog.open(this.fileHelper, FILE_DIALOG_SAVE);
         if (path !== null) {
             // check if filename exists
-            if (path != this.currentFilename && await this._fileHelper.fileExists(path)) {
+            if (path != this.currentFilename && await this.showBusy(this.fileHelper.fileExists(path))) {
                 if (window.confirm("Overwrite existing file '" + path + "'?")) {
                     await this.saveFile(path);
                 } else {
@@ -213,24 +214,26 @@ class Workflow {
 
     async openFile() {
         if (await this.checkSaved()) {
-            let path = await this._fileDialog.open(this._fileHelper, FILE_DIALOG_OPEN);
+            let path = await this._fileDialog.open(this.fileHelper, FILE_DIALOG_OPEN);
             if (path !== null) {
-                let contents = await this.showBusy(this._fileHelper.readFile(path));
+                let contents = await this.showBusy(this.fileHelper.readFile(path));
                 this._loadEditorContents(contents);
                 this._setFilename(path);
                 console.log("Current File Changed to: " + this.currentFilename);
+                return true;
             }
         }
+        return false;
     }
 
     async writeFile(contents, offset=0) {
-        await this.showBusy(
-            this._fileHelper.writeFile(this.currentFilename, offset, contents)
+        return await this.showBusy(
+            this.fileHelper.writeFile(this.currentFilename, offset, contents)
         );
     }
 
     async readOnly() {
-        return await this._fileHelper.readOnly()
+        return await this.fileHelper.readOnly()
     }
 }
 

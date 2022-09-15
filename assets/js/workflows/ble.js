@@ -25,7 +25,6 @@ class BLEWorkflow extends Workflow {
         this.bleDevice = null;
         this.decoder = new TextDecoder();
         this.loadEditor = null;
-        this.fileClient = null;
         this.connectDialog = new GenericModal("ble-connect");
         this.partialWrites = true;
         this.type = CONNTYPE.Ble;
@@ -100,9 +99,11 @@ class BLEWorkflow extends Workflow {
             this.rxCharacteristic = await this.serialService.getCharacteristic(bleNusCharRXUUID);
         
             this.txCharacteristic.addEventListener('characteristicvaluechanged', this.onSerialReceive.bind(this));
-            await this.txCharacteristic.startNotifications();    
+            await this.txCharacteristic.startNotifications();
+            return true;
         } catch(e) {
             console.log(e, e.stack);
+            return e;
         }
     }
 
@@ -135,7 +136,7 @@ class BLEWorkflow extends Workflow {
     }
 
     async getDeviceFileContents(filename) {
-        return await this.fileClient.readFile(filename);
+        return await this.fileHelper.readFile(filename);
     }
 
     async switchToDevice(device) {
@@ -170,7 +171,7 @@ class BLEWorkflow extends Workflow {
     async onBond() {
         try {
             console.log("bond");
-            await this.fileClient.bond();
+            await this.fileHelper.bond();
             console.log("bond done");
         } catch(e) {
             console.log(e, e.stack);

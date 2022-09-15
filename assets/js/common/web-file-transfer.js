@@ -54,8 +54,7 @@ class FileTransferClient {
             options.headers['Content-Type'] = "application/octet-stream";
         }
 
-        const response = await this._fetch(`/fs${path}`, options);
-        return await response.text();
+        await this._fetch(`/fs${path}`, options);
     }
 
     // Makes the directory and any missing parents
@@ -99,7 +98,6 @@ class FileTransferClient {
         try {
             response = await fetch(new URL(location, `http://${this.hostname}`), fetchOptions);
         } catch(error) {
-            console.error(`Host '${this.hostname}' not found.`);
             throw new ProtocolError(`Host '${this.hostname}' not found.`);
         }
 

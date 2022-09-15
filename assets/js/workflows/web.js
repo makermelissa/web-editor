@@ -22,7 +22,6 @@ class WebWorkflow extends Workflow {
         this.websocket = null;
         this.serialService = null;
         this.loadEditor = null;
-        this.fileClient = null;
         this.connectDialog = new GenericModal("web-connect");
         this.deviceDiscoveryDialog = new DiscoveryModal("device-discovery");
         this.connIntervalId = null;
@@ -74,32 +73,26 @@ class WebWorkflow extends Workflow {
             this.websocket.onopen = this.onConnected.bind(this);
             this.websocket.onmessage = this.onSerialReceive.bind(this);
             this.websocket.onclose = this.onDisconnected.bind(this);
-            
-            this.websocket.onerror = function(e) {
-                console.log("WebSocket Error:", e);
-                if (this.connected) {
-                    this.websocket.close();
-                }
-                this.websocket = null;
-            }.bind(this);
             return true;
         } catch(e) {
             //console.log(e, e.stack);
-            return false;
+            return new Error("Error initializing Web Socket.");
         }
     }
 
     async connectToHost(host) {
-        let success;
-        //try {
-            console.log('Initializing File Transfer Client...');
-            this.initFileClient(new FileTransferClient(host, this.connectionStatus.bind(this)));
-            await this.fileClient.listDir('/');
-            success = await this.initSerial(host);
-        /*} catch(error) {
-            console.log("Device not found");
-            return false;
-        }*/
+        let returnVal;
+        console.log('Initializing File Transfer Client...');
+        this.initFileClient(new FileTransferClient(host, this.connectionStatus.bind(this)));
+        try {
+            await this.fileHelper.listDir('/');
+        } catch(error) {
+            return new Error(`The device ${host} was not found. Be sure it is plugged in and set up properly.`);
+        }
+        returnVal = await this.initSerial(host);
+        if (returnVal instanceof Error) {
+            return returnVal;
+        }
         // Wait for a connection with a timeout
         console.log("Waiting for connection...");
         try {
@@ -111,16 +104,15 @@ class WebWorkflow extends Workflow {
                 }, CONNECT_TIMEOUT_MS
             );
         } catch(error) {
-            console.log("Connection timed out");
-            return false;
+            return new Error("Connection timed out. Make sure you don't have more than one browser tab open.");
         }
 
-        if (success && this.connectionStatus()) {
+        if (this.connectionStatus()) {
             await this.loadEditor();
             return true;
         }
 
-        return false;
+        return new Error("Unknown Error. Try resetting the device.");
     }
 
     async serialTransmit(msg) {
@@ -185,7 +177,7 @@ class WebWorkflow extends Workflow {
 
     async activeConnection() {
         try {
-            let version = await this.fileClient.versionInfo();
+            let version = await this.fileHelper.versionInfo();
             if (!version) {
                 return false;
             }

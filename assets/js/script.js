@@ -1,11 +1,13 @@
-import {EditorState, EditorView, basicSetup} from "../../_snowpack/pkg/@codemirror/basic-setup.js"
+import {EditorView, basicSetup} from "../../_snowpack/pkg/codemirror.js"
+import {EditorState} from "../../_snowpack/pkg/@codemirror/state.js"
 import {python} from "../../_snowpack/pkg/@codemirror/lang-python.js"
-import {classHighlightStyle} from "../../_snowpack/pkg/@codemirror/highlight.js"
+import {classHighlighter} from "../../_snowpack/pkg/@lezer/highlight.js";
+import {syntaxHighlighting} from "../../_snowpack/pkg/@codemirror/language.js"
 import {BLEWorkflow} from './workflows/ble.js'
 import {WebWorkflow} from './workflows/web.js'
 import {CONNTYPE, CHAR_CTRL_D} from './workflows/workflow.js'
 import {ButtonValueDialog, MessageModal} from './common/dialogs.js';
-import {sleep, buildHash, isLocal, getUrlParams} from './common/utilities.js'
+import {sleep, buildHash, isLocal, getUrlParams, getUrlParam} from './common/utilities.js'
 
 var terminal;
 var fitter;
@@ -46,7 +48,7 @@ const editorExtensions = [
     basicSetup,
     python(),
     editorTheme,
-    classHighlightStyle,
+    syntaxHighlighting(classHighlighter),
     EditorView.updateListener.of(onTextChange)
 ]
 // New Buttons (Mobile and Desktop Layout)
@@ -58,6 +60,7 @@ btnNew.forEach((element) => {
         if (await workflow.checkSaved()) {
             loadEditorContents("");
             setFilename(null);
+            setSaved(true);
             console.log("Current File Changed to: " + workflow.currentFilename);
         }
     });
@@ -70,6 +73,9 @@ btnOpen.forEach((element) => {
         e.stopPropagation();
         await checkConnected();
         await workflow.openFile();
+        if (!isDirty()) {
+            setSaved(true);
+        }
     });
 });
 
@@ -93,6 +99,7 @@ btnSaveRun.forEach((element) => {
         e.stopPropagation();
         await checkConnected();
         if (await workflow.saveFile()) {
+            setSaved(true);
             await workflow.runCode();
         }
     });
@@ -119,6 +126,14 @@ btnInfo.addEventListener('click', async function(e) {
     await workflow.showInfo(editor.state.doc.sliceString(0));
 });
 
+function setSaved(saved) {
+    if (saved) {
+        mainContent.classList.remove("unsaved")
+    } else {
+        mainContent.classList.add("unsaved")
+    }
+}
+
 async function checkConnected() {
     if (!workflow || !workflow.connectionStatus()) {
         let connType = await chooseConnection();
@@ -130,7 +145,7 @@ async function checkConnected() {
 
         // Connect if we're local
         if (isLocal() && workflow.host) {
-            if (await workflow.showBusy(workflow.connect())) {
+            if (await workflowConnect()) {
                 await checkReadOnly();
             }
         }
@@ -142,6 +157,30 @@ async function checkConnected() {
             // We're connected, local, and using Web Workflow
             await workflow.showInfo(editor.state.doc.sliceString(0));
         }
+    }
+}
+
+async function workflowConnect() {    
+    let returnVal;
+    if (!workflow) return false;
+
+    if ((returnVal = await workflow.showBusy(workflow.connect())) instanceof Error) {
+        await showMessage(`Unable to connect. ${returnVal.message}`);
+        return false;
+    }
+    return true;
+}
+
+async function checkReadOnly() {
+    const readOnly = await workflow.readOnly();
+    btnSaveAs.forEach((element) => {
+        element.disabled = readOnly;
+    });
+    btnSaveRun.forEach((element) => {
+        element.disabled = readOnly;
+    });
+    if (readOnly) {
+        await showMessage("Warning: File System is in read only mode. Disable the USB drive to allow write access.");
     }
 }
 
@@ -260,7 +299,7 @@ async function showMessage(message) {
 
 async function changeMode(mode) {
     if (mode > 0) {
-        mainContent.classList.remove("mode-landing", "mode-editor", "mode-serial");
+        mainContent.classList.remove("mode-editor", "mode-serial");
     }
     if (mode == MODE_EDITOR) {
         mainContent.classList.add("mode-editor");
@@ -326,19 +365,6 @@ async function loadEditor() {
     await changeMode(MODE_EDITOR);
 }
 
-async function checkReadOnly() {
-    const readOnly = await workflow.readOnly();
-    btnSaveAs.forEach((element) => {
-        element.disabled = readOnly;
-    });
-    btnSaveRun.forEach((element) => {
-        element.disabled = readOnly;
-    });
-    if (readOnly) {
-        await showMessage("Warning: File System is in read only mode. Disable the USB drive to allow write access.");
-    }
-}
-
 var editor;
 var currentTimeout = null;
 async function writeText(writeFrom = null) {
@@ -363,7 +389,12 @@ async function writeText(writeFrom = null) {
     unchanged = doc.length;
     try {
         console.log("write");
-        await workflow.writeFile(contents, offset);
+        if (await workflow.writeFile(contents, offset)) {
+            setFilename(workflow.currentFilename);
+            setSaved(true);
+        } else {
+            await showMessage(`Saving file '${workflow.currentFilename} failed.`);
+        }
     } catch (e) {
         console.log("write failed", e, e.stack);
         unchanged = Math.min(oldUnchanged, unchanged);
@@ -378,6 +409,7 @@ async function onTextChange(update) {
     if (!update.docChanged) {
         return;
     }
+
     var hasGap = false;
     update.changes.desc.iterGaps(function(posA, posB, length) {
         // this are unchanged gaps.
@@ -398,6 +430,8 @@ async function onTextChange(update) {
     if (currentTimeout != null) {
         clearTimeout(currentTimeout);
     }
+
+    setSaved(false);
 }
 
 function disconnectCallback() {
@@ -428,9 +462,11 @@ function setupXterm() {
     });
 }
 
-// TODO: Check parameters if on code.circuitpython.org for #backend
 function getBackend() {
-    if (isLocal()) {
+    let backend = getUrlParam(backend);
+    if (backend && (backend in validBackends)) {
+        return validBackends[backend];
+    } else if (isLocal()) {
         return validBackends["web"];
     }
 
@@ -480,13 +516,11 @@ document.addEventListener('DOMContentLoaded', async (event) => {
                 await workflow.showConnect(editor.state.doc.sliceString(0));
             }
         } else {
-            if (!(await workflow.showBusy(workflow.connect()))) {
-                showMessage("Unable to connect. Be sure device is plugged in and set up properly.");
-            } else if (workflow.type === CONNTYPE.Web) {
+            if (await workflowConnect() && workflow.type === CONNTYPE.Web) {
                 await checkReadOnly();
                 // We're connected, local, and using Web Workflow
                 await workflow.showInfo(editor.state.doc.sliceString(0));
-            }
+            }            
         }
     } else {
         await checkConnected();
